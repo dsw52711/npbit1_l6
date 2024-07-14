@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::fs::File;
 use std::io::Read;
 use std::io::Error as IOError;
+use std::io::Write;
 use std::path::Path;
 use std::process::exit;
 
@@ -72,18 +73,49 @@ fn json_to_value(json_data: &str) -> Result<JsonValue, String> {
    Ok(value.unwrap())
 }
 
-fn load_data(input_path: &str) -> Result<JsonValue, String> {
+fn value_to_json(value: &JsonValue) -> Result<String, String> {
+   let json_data = serde_json::to_string_pretty(value);
+   if let Err(err) = json_data {
+      return Err(err.to_string());
+   }
+   Ok(json_data.unwrap())
+}
+
+fn convert_data(input_path: &str, output_path: &str) -> Result<String, String> {
    let input_data = read_input_data(input_path);
    if let Err(err) = input_data {
       return Err(err.to_string());
    }
    let input_data = input_data.unwrap();
-   let json_data = json_to_value(&input_data);
-   if let Err(err) = json_data {
+
+   let input_format = Path::new(input_path).extension().unwrap().to_str().unwrap();
+   let output_format = Path::new(output_path).extension().unwrap().to_str().unwrap();
+
+   let output_data = match input_format {
+      "json" => {
+         let value = json_to_value(&input_data)?;
+         match output_format {
+            "json" => value_to_json(&value).unwrap(),
+            _ => unreachable!()
+         }
+      },
+      _ => unreachable!()
+   };
+
+   Ok(output_data)
+}
+
+fn save_data(data: &str, output_path: &str) -> Result<(), String> {
+   let output_file = File::create(Path::new(output_path));
+   if let Err(err) = output_file {
       return Err(err.to_string());
    }
-   let json_data = json_data.unwrap();
-   Ok(json_data)
+   let mut output_file = output_file.unwrap();
+   let result = output_file.write_all(data.as_bytes());
+   if let Err(err) = result {
+      return Err(err.to_string());
+   }
+   Ok(())
 }
 
 fn main() {
@@ -138,9 +170,14 @@ fn main() {
       handle_interactive()
    };
 
-   let converted = load_data(&input_path).unwrap();
+   let converted = convert_data(&input_path, &output_path).unwrap();
+   let res = save_data(&converted, &output_path);
+   if let Err(err) = res {
+      eprintln!("Conversion failed:\n{}", err);
+      exit(1);
+   }
+   println!("Conversion successful");
 
    println!("input: {:?}", input_path);
    println!("output: {:?}", output_path);
-   println!("converted: {}", converted);
 }
