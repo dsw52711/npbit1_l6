@@ -1,4 +1,7 @@
 use std::ffi::OsStr;
+use std::fs::File;
+use std::io::Read;
+use std::io::Error as IOError;
 use std::path::Path;
 use std::process::exit;
 
@@ -6,6 +9,7 @@ use clap::Arg;
 use clap::command;
 use inquire::Text;
 use inquire::validator::Validation;
+use serde_json::Value as JsonValue;
 
 fn handle_interactive() -> (String, String) {
    // fuck you inquire for using some fucking weird ass result type
@@ -53,6 +57,35 @@ fn handle_interactive() -> (String, String) {
    (input_path, output_path)
 }
 
+fn read_input_data(input_path: &str) -> Result<String, IOError> {
+   let mut input_file = File::open(input_path)?;
+   let mut input_data = String::new();
+   input_file.read_to_string(&mut input_data)?;
+   Ok(input_data)
+}
+
+fn json_to_value(json_data: &str) -> Result<JsonValue, String> {
+   let value = serde_json::from_str(json_data);
+   if let Err(err) = value {
+      return Err(err.to_string());
+   }
+   Ok(value.unwrap())
+}
+
+fn load_data(input_path: &str) -> Result<JsonValue, String> {
+   let input_data = read_input_data(input_path);
+   if let Err(err) = input_data {
+      return Err(err.to_string());
+   }
+   let input_data = input_data.unwrap();
+   let json_data = json_to_value(&input_data);
+   if let Err(err) = json_data {
+      return Err(err.to_string());
+   }
+   let json_data = json_data.unwrap();
+   Ok(json_data)
+}
+
 fn main() {
    let file_exists = move |input: &str| -> Result<String, String> {
       let path = Path::new(input);
@@ -76,9 +109,8 @@ fn main() {
       }
    };
 
-   let input_parser = move |input: &str| -> Result<String, String> {
-      let exists = file_exists(input);
-      exists?;
+   let input_parser = move |input: &str| {
+      file_exists(input)?;
       valid_extension(input)
    };
 
@@ -106,6 +138,9 @@ fn main() {
       handle_interactive()
    };
 
+   let converted = load_data(&input_path).unwrap();
+
    println!("input: {:?}", input_path);
    println!("output: {:?}", output_path);
+   println!("converted: {}", converted);
 }
